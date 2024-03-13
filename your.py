@@ -113,14 +113,98 @@ def app():
         df_intermedio=df_intermedio[df_intermedio['user_id']==st.session_state['username']].sort_values(by=['rating'], ascending=False)
 
         #dibuja rating
+       
         df_filter=df_intermedio[['artist','song','count','rating']]
         st.dataframe(df_filter, use_container_width=True)
         
         #Función para cargar modelo y predecir
+       
+       #Entrenamiento del modelo
+       # from sklearn.model_selection import train_test_split
+       
+
+        #Librerías extras
+        import itertools
+        from surprise.dump import dump, load
+        from sklearn.metrics.pairwise import cosine_similarity
+        from surprise import Dataset
+        from surprise import Reader
+        from surprise import KNNBasic, KNNWithMeans
+        
+        df_intermedio['rating'] = df_intermedio['rating']*4
+        # Ajustar los valores mayores que 5 a 5
+        df_intermedio.loc[df_intermedio['rating'] > 4, 'rating'] = 4
+        df_intermedio['rating_'] = df_intermedio['rating']+1
+        
+        #st.dataframe(df_intermedio, use_container_width=True)
+        
+        #df_final = df_intermedio.sample(500)
+        
+        train, test = train_test_split(df_intermedio, test_size=0.2)
+        
+        df_intermedio['rating'] = df_intermedio['rating']*4
+        
+         # Ajustar los valores mayores que 5 a 5
+        train_a = train
+        test_a = test
+        
+        def save_model(algo):
+            dump(file_name='user_user_model', algo=algo)
+
+        def train_model(ratings_df):
+            test_a['rating_'] = (test_a['rating'] + 1)
+            reader = Reader(rating_scale=(1, ratings_df['rating_'].max()))
+            train_set = Dataset.load_from_df(ratings_df[['user_id', 'track_id', 'rating_']], reader).build_full_trainset()
+            algo_user = KNNBasic(k=10, min_k=1,sim_options={'name': 'pearson','user_based': True})
+            algo_user.fit(train_set)
+            save_model(algo_user)
+            return algo_user
+        
+        
+        train_model(train_a)
 
 
+        def get_user_predictions(user_id, songs_list, size_predictions):
+            algo = load('user_user_model')[1]
+            # reader = Reader(rating_scale=(1, ratings_df['playcount'].max()))
+            # test_set = Dataset.load_from_df(ratings_df[['user_id', 'track_id', 'playcount']], reader).build_full_trainset()
+            test_set = [(user_id, song, 0) for song in songs_list]
+            predictions=algo.test(test_set)
+            print(predictions)
 
-
+            user_predictions=list(filter(lambda x: x[0]==user_id,predictions))
+            #Ordenamos de mayor a menor estimación de relevancia
+            user_predictions.sort(key=lambda x : x.est, reverse=True)
+            #tomamos las 10 primeras predicciones
+            user_predictions=user_predictions[0:size_predictions]
+            #Se convierte a dataframe
+            df_predictions = pd.DataFrame.from_records(list(map(lambda x: (x.iid, x.est) , user_predictions)))
+            #Lo unimos con el dataframe de películas
+            return df_predictions
+        
+            
+        st.title('Recomendaciones automáticas' )
+    
+        df_predictions=get_user_predictions(st.session_state['username'], user_timestamp['track_id'] , 3)
+     
+        df_predictions = df_predictions.rename(columns={0: 'track_id'})
+        df_predictions = df_predictions.rename(columns={1: 'punctuation'})
+        
+        df_predictions["song"] = user_timestamp[user_timestamp["track_id"].isin(df_predictions["track_id"])]["song"]
+        
+        #df_predictions=pd.merge(df_predictions, user_timestamp, on='track_id',  how='left')
+        #df_predictions= df_predictions.groupby(['punctuation','user_id', 'song'])
+        
+        
+        #df_predictions=df_predictions[df_predictions.track_id.isin(user_timestamp["track_id"])]
+        
+        
+        #df_predictions["song"] = df_predictions.apply(lambda x: user_timestamp['song'] if user_timestamp["track_id"].isin(x).any() else "No identificada",axis=1)
+        #df_pred_songs=pd.merge(df_predictions, df_songs, on='track_id')
+        #df_predictions = pd.merge(df_predictions, user_timestamp, how='left', on=['track_id'], suffixes=('', '_y'), indicator=True).dropna(axis=1).rename(columns={'_merge': 'Song'})
+        #df_predictions['Song'] = df_predictions['Song'].map({'both': 'Si', 'left_only': 'sin identificar'})
+        #df_predictions= df_predictions.groupby(['track_id', 'punctuation','song'], as_index=False)
+        st.dataframe(df_predictions, use_container_width=True)
         #Dibuja tabla fitlrada de usuario
         #st.dataframe(df_intermedio, use_container_width=True)
         
@@ -150,7 +234,7 @@ def app():
 
 
 
-        #funcion para clasificar las plantas 
+        #funcion para clasificar las 
         def classify(num):
             if num == 0:
                 return 'Metal'
