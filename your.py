@@ -34,17 +34,14 @@ def app():
     #db=firestore.client()
     user_timestamp=pd.read_csv('userid-timestamp-artid-artname-traid-traname.tsv',sep='\t')
     user_profile = pd.read_csv('userid-profile.tsv',sep='\t')
-
+    
     try:
+        
+        
         st.title('Historico de rating del usuario: '+st.session_state['username'] )
 
         #Dibuja tabla principal
         #st.dataframe(user_timestamp, use_container_width=True)
-        
-
-      
-
-      
 
         #dibuja df usuarios
         #st.dataframe(user_profile, use_container_width=True)
@@ -77,6 +74,8 @@ def app():
         #user_timestamp.dropna(subset=['artist_id', 'track_id'], inplace = True)
         #st.text('Tabla user_timestamp: ')
         #st.dataframe(user_timestamp, use_container_width=True)
+       
+
 
         uput = pd.merge(user_profile, user_timestamp, on='user_id')
         
@@ -85,6 +84,7 @@ def app():
         #st.dataframe(uput, use_container_width=True)
 
         count = uput.groupby(['user_id', 'track_id'], as_index=False).agg({'timestamp': 'count'}).rename(columns={'timestamp': 'count'})
+        
         #uput = uput[['user_id', 'gender', 'age', 'country', 'artist_id', 'artis', 'track_id', 'song']].drop_duplicates()
 
         #st.text('Tabla rating 2: ')
@@ -111,17 +111,37 @@ def app():
             df_intermedio=pd.concat([df_intermedio,uput_df], ignore_index=True)
 
         df_intermedio=df_intermedio[df_intermedio['user_id']==st.session_state['username']].sort_values(by=['rating'], ascending=False)
+        
+        if(df_intermedio.empty):
+            addInfo=st.session_state['displayName']
+            #st.text('Detalles: '+addInfo)
 
-        #dibuja rating
-       
-        df_filter=df_intermedio[['artist','song','count','rating']]
-        st.dataframe(df_filter, use_container_width=True)
+            resto=addInfo
+            gender=resto.split("-",1)[0]
+            resto=resto.split("-",1)[1]
+            age=resto.split("-",1)[0]
+            resto=resto.split("-",1)[1]
+            country=resto.split("-",1)[0]
+            resto=resto.split("-",1)[1]
+            fdate=resto.split("-",1)[0]
+            resto=resto.split("-",1)[1]
+            musicType=resto.split("-",1)[0]
+            df_intermedio=uput[uput['gender']=='m']
+            df_intermedio=df_intermedio[df_intermedio['country']==country].sort_values(by=['count'], ascending=False)
+            df_intermedio['rating']=1
+        else:
+            #dibuja rating
+        
+            #st.title('df_filter')
+    
+            df_filter=df_intermedio[['artist','song','count','rating']]
+            st.dataframe(df_filter, use_container_width=True)
         
         #Función para cargar modelo y predecir
        
        #Entrenamiento del modelo
        # from sklearn.model_selection import train_test_split
-       
+      
 
         #Librerías extras
         import itertools
@@ -130,12 +150,12 @@ def app():
         from surprise import Dataset
         from surprise import Reader
         from surprise import KNNBasic, KNNWithMeans
-        
+       
         df_intermedio['rating'] = df_intermedio['rating']*4
         # Ajustar los valores mayores que 5 a 5
         df_intermedio.loc[df_intermedio['rating'] > 4, 'rating'] = 4
         df_intermedio['rating_'] = df_intermedio['rating']+1
-        
+      
         #st.dataframe(df_intermedio, use_container_width=True)
         
         #df_final = df_intermedio.sample(500)
@@ -144,6 +164,7 @@ def app():
         
         df_intermedio['rating'] = df_intermedio['rating']*4
         
+              
          # Ajustar los valores mayores que 5 a 5
         train_a = train
         test_a = test
@@ -181,57 +202,37 @@ def app():
             df_predictions = pd.DataFrame.from_records(list(map(lambda x: (x.iid, x.est) , user_predictions)))
             #Lo unimos con el dataframe de películas
             return df_predictions
-        
-            
+        #st.title('Lista canciones' )
+        dfSongs=user_timestamp.groupby(['track_id','song'], as_index=False).agg({'timestamp': 'count'})
+        #dfSongs=  user_timestamp.groupby(('track_id','song'))
+        #dfSongs=dfSongs[['track_id', 'song']].drop_duplicates()
+        dfSongs = pd.DataFrame(dfSongs, columns=["track_id", "song"])
+        #st.dataframe(dfSongs, use_container_width=True)
+         
         st.title('Recomendaciones automáticas' )
     
-        df_predictions=get_user_predictions(st.session_state['username'], user_timestamp['track_id'] , 3)
-     
+    
+    
+        df_predictions=get_user_predictions(st.session_state['username'], dfSongs['track_id'] , 10)
         df_predictions = df_predictions.rename(columns={0: 'track_id'})
         df_predictions = df_predictions.rename(columns={1: 'punctuation'})
         
-        df_predictions["song"] = user_timestamp[user_timestamp["track_id"].isin(df_predictions["track_id"])]["song"]
+      
+        df_predictions['song'] = df_predictions['track_id'].map(dfSongs.set_index('track_id')['song'])
         
-        #df_predictions=pd.merge(df_predictions, user_timestamp, on='track_id',  how='left')
-        #df_predictions= df_predictions.groupby(['punctuation','user_id', 'song'])
+       
+        df_predictions=df_predictions[['song','punctuation']]
         
+        #df_predictions = df_predictions.groupby(['song', 'punctuation'], as_index=False)
         
-        #df_predictions=df_predictions[df_predictions.track_id.isin(user_timestamp["track_id"])]
-        
-        
-        #df_predictions["song"] = df_predictions.apply(lambda x: user_timestamp['song'] if user_timestamp["track_id"].isin(x).any() else "No identificada",axis=1)
-        #df_pred_songs=pd.merge(df_predictions, df_songs, on='track_id')
-        #df_predictions = pd.merge(df_predictions, user_timestamp, how='left', on=['track_id'], suffixes=('', '_y'), indicator=True).dropna(axis=1).rename(columns={'_merge': 'Song'})
-        #df_predictions['Song'] = df_predictions['Song'].map({'both': 'Si', 'left_only': 'sin identificar'})
-        #df_predictions= df_predictions.groupby(['track_id', 'punctuation','song'], as_index=False)
         st.dataframe(df_predictions, use_container_width=True)
+        
+        
         #Dibuja tabla fitlrada de usuario
         #st.dataframe(df_intermedio, use_container_width=True)
         
-        st.sidebar.header('User Input Parameters')
         
-        #funcion para poner los parametros en el sidebar
-        #def user_input_parameters():
-        #    sepal_length = st.sidebar.slider('Sepal length', 4.3, 7.9, 5.4)
-        #    sepal_width = st.sidebar.slider('Sepal width', 2.0, 4.4, 3.4)
-        #    petal_length = st.sidebar.slider('Petal length', 1.0, 6.9, 1.3)
-        #    petal_width = st.sidebar.slider('Petal width', 0.1, 2.5, 0.2)
-        #    data = {'sepal_length': sepal_length,
-        #            'sepal_width': sepal_width,
-        #            'petal_length': petal_length,
-        #            'petal_width': petal_width,
-        #            }
-        #    features = pd.DataFrame(data, index=[0])
-        #    return features
-
-        #df = user_input_parameters()
-
-        #st.write(df)
-        #st.text(' resultados',df) 
-        #print('Finalizando')
-
-        #st.write(user_timestamp)
-
+        
 
 
         #funcion para clasificar las 
