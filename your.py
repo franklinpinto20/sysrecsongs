@@ -169,6 +169,9 @@ def app():
         train_a = train
         test_a = test
         
+        train_item_1 = train
+        test_item_1 = test
+        
         def save_model(algo):
             dump(file_name='user_user_model', algo=algo)
 
@@ -211,7 +214,7 @@ def app():
          
         st.title('Recomendaciones automáticas' )
     
-    
+          
     
         df_predictions=get_user_predictions(st.session_state['username'], dfSongs['track_id'] , 10)
         df_predictions = df_predictions.rename(columns={0: 'track_id'})
@@ -226,14 +229,53 @@ def app():
         #df_predictions = df_predictions.groupby(['song', 'punctuation'], as_index=False)
         
         st.dataframe(df_predictions, use_container_width=True)
-        
-        
+                
         #Dibuja tabla fitlrada de usuario
         #st.dataframe(df_intermedio, use_container_width=True)
         
+        st.title('Otras Sugerencias' )
         
-        
+        def save_model(algo):
+            dump(file_name='item_item_model', algo=algo)
 
+        def train_model(ratings_df):
+            test_item_1['rating_'] = (test_item_1['rating'] + 1)
+            reader = Reader(rating_scale=(1, ratings_df['rating_'].max()))
+            train_set = Dataset.load_from_df(ratings_df[['artist_id', 'track_id', 'rating_']], reader).build_full_trainset()
+            knn_item_item = KNNBasic(k=10, min_k=1,sim_options={'name': 'pearson','user_based': True})
+            knn_item_item.fit(train_set)
+            save_model(knn_item_item)
+            return knn_item_item
+
+
+        train_model(train_item_1)
+        
+        def get_item_predictions(artist_id, songs_list, size_predictions):
+            algo = load('item_item_model')[1]
+            # reader = Reader(rating_scale=(1, ratings_df['playcount'].max()))
+            # test_set = Dataset.load_from_df(ratings_df[['user_id', 'track_id', 'playcount']], reader).build_full_trainset()
+            test_set = [(artist_id, song, 0) for song in songs_list]
+            predictions=algo.test(test_set)
+            print(predictions)
+
+            item_predictions=list(filter(lambda x: x[0]==artist_id,predictions))
+            #Ordenamos de mayor a menor estimación de relevancia
+            item_predictions.sort(key=lambda x : x.est, reverse=True)
+            #tomamos las 10 primeras predicciones
+            item_predictions=item_predictions[0:size_predictions]
+            #Se convierte a dataframe
+            df_predictions = pd.DataFrame.from_records(list(map(lambda x: (x.iid, x.est) , item_predictions)))
+            #Lo unimos con el dataframe de películas
+            return df_predictions
+                
+                
+        df_predictions=get_item_predictions(df_intermedio['artist_id'][0], dfSongs['track_id'] , 10)
+        df_predictions = df_predictions.rename(columns={0: 'track_id'})
+        df_predictions = df_predictions.rename(columns={1: 'punctuation'})
+        df_predictions['song'] = df_predictions['track_id'].map(dfSongs.set_index('track_id')['song'])
+        df_predictions=df_predictions[['song','punctuation']]
+        
+        st.dataframe(df_predictions, use_container_width=True)
 
         #funcion para clasificar las 
         def classify(num):
